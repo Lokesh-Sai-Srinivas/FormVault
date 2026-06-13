@@ -188,6 +188,9 @@
   // --- Autofill Heuristic Logic ---
 
   function autofillForm(profile) {
+    console.log("🚀 [FormVault Debug] Starting Autofill...");
+    console.log("Selected Profile:", profile);
+
     // 1. Find all input/textarea elements on the page (or within current form)
     let container = null;
     if (activeInput) {
@@ -202,32 +205,49 @@
       container = document;
     }
 
+    console.log("Form Container:", container);
+
     // A. Fill standard text inputs, textareas, contenteditables, and date fields
     const inputs = container.querySelectorAll('input, textarea, [role="textbox"]');
+    console.log(`Found ${inputs.length} text/date inputs.`);
+    
     inputs.forEach((input) => {
       if (!isFillableInput(input)) return;
 
       const label = getFieldLabel(input);
-      if (!label) return;
+      if (!label) {
+        console.warn("Could not extract label for input:", input);
+        return;
+      }
 
       const matchedField = findMatchingField(label, profile.fields);
+      console.log(`Input: "${label}" | Matched Profile Field:`, matchedField ? matchedField.label : "None");
+      
       if (matchedField) {
         fillFieldValue(input, matchedField.value);
+        console.log(`Filled "${label}" with value "${matchedField.value}"`);
       }
     });
 
     // B. Fill Radio buttons and Checkboxes (standard and custom ARIA elements)
     const radioAndCheckboxes = container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]');
+    console.log(`Found ${radioAndCheckboxes.length} radio/checkbox elements.`);
+
     radioAndCheckboxes.forEach((element) => {
       const questionLabel = getQuestionLabelForChoice(element);
       if (!questionLabel) return;
 
       const matchedField = findMatchingField(questionLabel, profile.fields);
+      const optionLabel = getOptionLabel(element);
+      
+      console.log(`Choice: Question="${questionLabel}", Option="${optionLabel}" | Match found:`, matchedField ? matchedField.label : "None");
+
       if (matchedField) {
-        const optionLabel = getOptionLabel(element);
         if (optionLabel && isValueMatch(matchedField.value, optionLabel)) {
+          console.log(`-> Matching value found: "${matchedField.value}". Selection state:`, isChoiceSelected(element));
           if (!isChoiceSelected(element)) {
             selectChoice(element);
+            console.log(`-> Selected option: "${optionLabel}" for question "${questionLabel}"`);
           }
         }
       }
@@ -235,17 +255,22 @@
 
     // C. Fill Dropdown Menus (standard select and custom ARIA elements)
     const dropdowns = container.querySelectorAll('select, [role="listbox"], [role="combobox"]');
+    console.log(`Found ${dropdowns.length} dropdown elements.`);
+
     dropdowns.forEach((dropdown) => {
       // Standard HTML select element
       if (dropdown.tagName.toLowerCase() === 'select') {
         const label = getFieldLabel(dropdown);
         const matchedField = findMatchingField(label, profile.fields);
+        console.log(`Standard Select: "${label}" | Match found:`, matchedField ? matchedField.label : "None");
+        
         if (matchedField) {
           const options = dropdown.options;
           for (let i = 0; i < options.length; i++) {
             if (isValueMatch(matchedField.value, options[i].text) || isValueMatch(matchedField.value, options[i].value)) {
               dropdown.selectedIndex = i;
               dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+              console.log(`-> Selected dropdown option: "${options[i].text}"`);
               break;
             }
           }
@@ -256,7 +281,10 @@
       // Custom Google Forms / ARIA dropdown
       const label = getQuestionLabelForChoice(dropdown);
       const matchedField = findMatchingField(label, profile.fields);
+      console.log(`Custom Dropdown: "${label}" | Match found:`, matchedField ? matchedField.label : "None");
+      
       if (matchedField) {
+        console.log(`-> Attempting to click dropdown: "${label}" to select "${matchedField.value}"`);
         // Open the dropdown menu to expose options
         dropdown.click();
         dropdown.dispatchEvent(new Event('click', { bubbles: true }));
@@ -264,9 +292,11 @@
         // Wait for options to render, click match, then close if not found
         setTimeout(() => {
           const options = document.querySelectorAll('[role="option"], .quantumWizMenuPaperselectOption, .appsMaterialWizMenuPaperselectOption');
+          console.log(`-> Found ${options.length} options in open dropdown menu.`);
           let foundOption = null;
           for (const option of options) {
             const optionText = option.textContent || option.getAttribute('data-value') || '';
+            console.log(`  Dropdown option text: "${optionText.trim()}"`);
             if (isValueMatch(matchedField.value, optionText)) {
               foundOption = option;
               break;
@@ -276,10 +306,12 @@
           if (foundOption) {
             foundOption.click();
             foundOption.dispatchEvent(new Event('click', { bubbles: true }));
+            console.log(`-> Successfully clicked dropdown option for value "${matchedField.value}"`);
           } else {
             // Close the dropdown if no match was found
             dropdown.click();
             dropdown.dispatchEvent(new Event('click', { bubbles: true }));
+            console.warn(`-> No matching option found in dropdown for value "${matchedField.value}". Closed dropdown.`);
           }
         }, 150);
       }
