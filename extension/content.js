@@ -229,39 +229,24 @@
       }
     });
 
-    // B. Fill Radio buttons and Checkboxes (standard and custom ARIA elements)
-    const radioAndCheckboxes = container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]');
-    console.log(`Found ${radioAndCheckboxes.length} radio/checkbox elements.`);
+    // B. Fill Radio buttons and Checkboxes
+    // Strategy 1: Google Forms question-card approach (most reliable)
+    fillGoogleFormsChoices(container, profile.fields);
 
+    // Strategy 2: Standard HTML radio/checkbox fallback
+    const radioAndCheckboxes = container.querySelectorAll('input[type="radio"], input[type="checkbox"]');
+    console.log(`Found ${radioAndCheckboxes.length} standard radio/checkbox inputs.`);
     radioAndCheckboxes.forEach((element) => {
-      let questionLabel = '';
-      let optionLabel = '';
-
-      // First check if there is an aria-labelledby relationship (standard for Google Forms)
-      const ariaLby = getQuestionAndOptionFromAriaLabelledby(element);
-      if (ariaLby && ariaLby.question && ariaLby.option) {
-        questionLabel = ariaLby.question;
-        optionLabel = ariaLby.option;
-      } else {
-        questionLabel = ariaLby ? ariaLby.question : '';
-        optionLabel = ariaLby ? ariaLby.option : '';
-        
-        if (!questionLabel) questionLabel = getQuestionLabelForChoice(element);
-        if (!optionLabel) optionLabel = getOptionLabel(element);
-      }
-
+      const questionLabel = getQuestionLabelForChoice(element);
+      const optionLabel = getOptionLabel(element);
       if (!questionLabel) return;
-
       const matchedField = findMatchingField(questionLabel, profile.fields);
-      console.log(`Choice: Question="${questionLabel}", Option="${optionLabel}" | Match found:`, matchedField ? matchedField.label : "None");
-
-      if (matchedField) {
-        if (optionLabel && isValueMatch(matchedField.value, optionLabel)) {
-          console.log(`-> Matching value found: "${matchedField.value}". Selection state:`, isChoiceSelected(element));
-          if (!isChoiceSelected(element)) {
-            selectChoice(element);
-            console.log(`-> Selected option: "${optionLabel}" for question "${questionLabel}"`);
-          }
+      console.log(`Standard radio: Q="${questionLabel}", Opt="${optionLabel}" | Match:`, matchedField ? matchedField.label : 'None');
+      if (matchedField && optionLabel && isValueMatch(matchedField.value, optionLabel)) {
+        if (!element.checked) {
+          element.click();
+          element.dispatchEvent(new Event('change', { bubbles: true }));
+          console.log(`-> Checked standard radio: "${optionLabel}"`);
         }
       }
     });
@@ -338,146 +323,233 @@
     });
   }
 
-  // Extract question text and option name from aria-labelledby IDs
-  function getQuestionAndOptionFromAriaLabelledby(el) {
-    const labelledby = el.getAttribute('aria-labelledby');
-    if (!labelledby) return null;
+  // -----------------------------------------------------------------------
+  // Google Forms Question-Card Radio/Checkbox Filler
+  // -----------------------------------------------------------------------
+  // Google Forms renders each question as a card (role="listitem" or class
+  // "geS5ne" / "Qr7Oae"). Each card has a title div and a set of choice
+  // containers. We iterate cards, match the title to a profile field, then
+  // find the option whose text matches the field value and fire the click
+  // sequence on the outermost clickable wrapper (the label-like div that
+  // Google's Angular listeners actually watch).
+  function fillGoogleFormsChoices(container, fields) {
+    // Selectors for Google Forms question cards (old + new UI)
+    const cardSelectors = [
+      '[role="listitem"]',
+      '.geS5ne',
+      '.Qr7Oae',
+      '.freebirdFormviewerViewItemsItemItem',
+    ];
 
-    const ids = labelledby.split(/\s+/);
-    let question = '';
-    let option = '';
+    const cards = container !== document
+      ? container.querySelectorAll(cardSelectors.join(','))
+      : document.querySelectorAll(cardSelectors.join(','));
 
-    ids.forEach((id) => {
-      const target = document.getElementById(id);
-      if (!target) return;
+    console.log(`[FormVault] Google Forms mode: found ${cards.length} question cards.`);
 
-      // Question title element has class M7eMe, is role="heading", or is a legend
-      const isQuestion = target.classList.contains('M7eMe') || 
-                         target.getAttribute('role') === 'heading' ||
-                         target.tagName.toLowerCase() === 'legend';
-      
-      if (isQuestion) {
-        question = target.textContent.trim();
-      } else {
-        // Only classify as the option choice text if it resides inside the choice's wrapper container
-        const choiceContainer = el.closest('.appsMaterialWizToggleRadiogroupElContainer, .docssharedWizToggleLabeledControl, [role="presentation"]') || el.parentElement;
-        const isOption = choiceContainer && choiceContainer.contains(target);
-        
-        if (isOption) {
-          option = target.textContent.trim();
+    cards.forEach((card) => {
+      // Extract the question title from the card
+      const titleEl = card.querySelector(
+        '.M7eMe, [role="heading"], .freebirdFormviewerViewItemsItemItemTitle, .freebirdFormeditorViewItemsItemName'
+      );
+      if (!titleEl) return;
+      const questionText = titleEl.textContent.trim();
+      if (!questionText) return;
+
+      const matchedField = findMatchingField(questionText, fields);
+      if (!matchedField) return;
+
+      console.log(`[FormVault] Question card: "${questionText}" → matched field "${matchedField.label}" = "${matchedField.value}"`);
+
+      // Look for radio/checkbox choice containers within this card
+      // Google Forms uses several possible wrapper selectors across versions
+      const choiceContainers = card.querySelectorAll(
+        '.appsMaterialWizToggleRadiogroupElContainer, ' +
+        '.docssharedWizToggleLabeledControl, ' +
+        '.freebirdFormviewerViewItemsRadioChoice, ' +
+        '.freebirdFormviewerViewItemsCheckboxChoice, ' +
+        '[data-value], ' +
+        '[role="radio"], ' +
+        '[role="checkbox"]'
+      );
+
+      console.log(`[FormVault]   Found ${choiceContainers.length} choice containers in card.`);
+
+      let filled = false;
+      choiceContainers.forEach((choiceEl) => {
+        if (filled) return;
+
+        // Extract the option text from this container
+        const optionText = getOptionTextFromContainer(choiceEl);
+        console.log(`[FormVault]   Option: "${optionText}"`);
+
+        if (!optionText) return;
+        if (!isValueMatch(matchedField.value, optionText)) return;
+
+        // Already selected?
+        if (isAlreadySelected(choiceEl)) {
+          console.log(`[FormVault]   Already selected: "${optionText}"`);
+          filled = true;
+          return;
         }
+
+        console.log(`[FormVault]   → Selecting: "${optionText}"`);
+        triggerGoogleFormsClick(choiceEl);
+        filled = true;
+      });
+
+      if (!filled) {
+        console.warn(`[FormVault]   No matching option found for value "${matchedField.value}" in question "${questionText}"`);
       }
     });
-
-    if (question || option) {
-      return { question, option };
-    }
-    return null;
   }
+
+  // Extract the visible text of a choice container (works for role=radio divs,
+  // label-wrapped inputs, and data-value elements)
+  function getOptionTextFromContainer(el) {
+    // 1. data-value attribute (most reliable in Google Forms)
+    const dataVal = el.getAttribute('data-value');
+    if (dataVal && dataVal.trim()) return dataVal.trim();
+
+    // 2. aria-label on the element itself
+    const ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
+
+    // 3. Look for the text label span (Google Forms-specific class)
+    const labelSpan = el.querySelector('.YEVVod, .aDTYNe span, .OvPDhc, .WpHeLc span, .nWQGrd span');
+    if (labelSpan && labelSpan.textContent.trim()) return labelSpan.textContent.trim();
+
+    // 4. aria-labelledby resolution
+    const labelledby = el.getAttribute('aria-labelledby');
+    if (labelledby) {
+      const parts = labelledby.split(/\s+/);
+      const texts = parts.map(id => {
+        const el2 = document.getElementById(id);
+        return el2 ? el2.textContent.trim() : '';
+      }).filter(Boolean);
+      // If the first resolved ID looks like a question heading, skip it and use rest
+      if (texts.length > 1) return texts[texts.length - 1];
+      if (texts.length === 1) return texts[0];
+    }
+
+    // 5. Last resort: inner text of the element (but trim to avoid entire card text)
+    const innerText = el.textContent ? el.textContent.trim() : '';
+    // Only return if it's a short string (not the whole card)
+    if (innerText && innerText.length < 100) return innerText;
+
+    return '';
+  }
+
+  // Check if a choice element is already selected
+  function isAlreadySelected(el) {
+    if (el.getAttribute('aria-checked') === 'true') return true;
+    if (el.classList.contains('isChecked') || el.classList.contains('is-checked')) return true;
+    // For standard inputs nested inside
+    const input = el.querySelector('input[type="radio"], input[type="checkbox"]');
+    if (input && input.checked) return true;
+    return false;
+  }
+
+  // Fire the correct event sequence for Google Forms' Angular event listeners.
+  // Google Forms listens for pointer/mouse events on the outermost wrapper div
+  // (the container that has role="radio" or the label div wrapping it).
+  function triggerGoogleFormsClick(el) {
+    // Walk up to find the outermost clickable container for this choice
+    // (Google Forms wraps role="radio" in a div that has the actual listener)
+    let target = el;
+
+    // If this IS a role=radio element, its parent container is the real listener target
+    if (el.getAttribute('role') === 'radio' || el.getAttribute('role') === 'checkbox') {
+      const parent = el.closest(
+        '.appsMaterialWizToggleRadiogroupElContainer, ' +
+        '.docssharedWizToggleLabeledControl, ' +
+        '.freebirdFormviewerViewItemsRadioChoice, ' +
+        '.freebirdFormviewerViewItemsCheckboxChoice'
+      );
+      if (parent) target = parent;
+    }
+
+    // Fire the full pointer/mouse event sequence
+    const pointerOpts = { bubbles: true, cancelable: true, view: window };
+    target.dispatchEvent(new PointerEvent('pointerover', pointerOpts));
+    target.dispatchEvent(new PointerEvent('pointerenter', pointerOpts));
+    target.dispatchEvent(new MouseEvent('mouseover', pointerOpts));
+    target.dispatchEvent(new MouseEvent('mouseenter', pointerOpts));
+    target.dispatchEvent(new PointerEvent('pointermove', pointerOpts));
+    target.dispatchEvent(new MouseEvent('mousemove', pointerOpts));
+    target.dispatchEvent(new PointerEvent('pointerdown', pointerOpts));
+    target.dispatchEvent(new MouseEvent('mousedown', pointerOpts));
+    target.dispatchEvent(new PointerEvent('pointerup', pointerOpts));
+    target.dispatchEvent(new MouseEvent('mouseup', pointerOpts));
+    target.click();
+    target.dispatchEvent(new MouseEvent('click', pointerOpts));
+
+    // Also try clicking any nested role=radio/checkbox just in case
+    const inner = target.querySelector('[role="radio"], [role="checkbox"]');
+    if (inner && inner !== el) {
+      inner.dispatchEvent(new MouseEvent('mousedown', pointerOpts));
+      inner.dispatchEvent(new MouseEvent('mouseup', pointerOpts));
+      inner.click();
+    }
+
+    // Dispatch change/input for framework binding
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // -----------------------------------------------------------------------
+  // Helper functions (kept for standard HTML forms)
+  // -----------------------------------------------------------------------
 
   // Traverse up to find the question label for radio, checkbox, or dropdown elements
   function getQuestionLabelForChoice(el) {
     let parent = el.parentElement;
     for (let i = 0; i < 6 && parent; i++) {
-      // If we hit a Google Forms question card container
       if (parent.classList.contains('geS5ne') || parent.getAttribute('role') === 'listitem') {
         const titleEl = parent.querySelector('.M7eMe, [role="heading"]');
-        if (titleEl && titleEl.textContent) {
-          return titleEl.textContent.trim();
-        }
-        break; // Don't look past the boundaries of the question card
+        if (titleEl && titleEl.textContent) return titleEl.textContent.trim();
+        break;
       }
-
-      // Standard HTML fieldsets
       if (parent.tagName.toLowerCase() === 'fieldset') {
         const legend = parent.querySelector('legend');
         if (legend && legend.textContent) return legend.textContent.trim();
       }
       parent = parent.parentElement;
     }
-
-    // Fallback heuristic if not inside a standard question card container
     parent = el.parentElement;
     for (let i = 0; i < 4 && parent; i++) {
       const titleEl = parent.querySelector('[role="heading"], .M7eMe, legend, label:not([for])');
-      if (titleEl && titleEl.textContent) {
-        return titleEl.textContent.trim();
-      }
+      if (titleEl && titleEl.textContent) return titleEl.textContent.trim();
       parent = parent.parentElement;
     }
     return '';
   }
 
-  // Extract the label/text for a specific radio or checkbox option
+  // Extract the label/text for a specific radio or checkbox option (standard HTML)
   function getOptionLabel(el) {
     const dataVal = el.getAttribute('data-value');
     if (dataVal) return dataVal.trim();
-
     const ariaLabel = el.getAttribute('aria-label');
     if (ariaLabel) return ariaLabel.trim();
-
     if (el.id) {
       const labelEl = document.querySelector(`label[for="${el.id}"]`);
       if (labelEl) return labelEl.textContent.trim();
     }
-
     const parentLabel = el.closest('label');
     if (parentLabel) return parentLabel.textContent.trim();
-
-    if (el.textContent && el.textContent.trim()) {
-      return el.textContent.trim();
-    }
-
-    // Check sibling text content
-    let parent = el.parentElement;
+    if (el.textContent && el.textContent.trim()) return el.textContent.trim();
+    const parent = el.parentElement;
     if (parent) {
       const text = parent.textContent || '';
       if (text.trim()) return text.trim();
     }
-
     return '';
   }
 
-  // Check if a radio or checkbox element is currently selected
+  // Check if a standard HTML radio/checkbox is selected
   function isChoiceSelected(el) {
-    if (el.tagName.toLowerCase() === 'input') {
-      return el.checked;
-    }
+    if (el.tagName.toLowerCase() === 'input') return el.checked;
     return el.getAttribute('aria-checked') === 'true' || el.classList.contains('is-checked');
-  }
-
-  // Dispatch native MouseEvent to satisfy framework listeners (like Angular/React in Google Forms)
-  function dispatchMouseEvent(el, type) {
-    const event = new MouseEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      view: window
-    });
-    el.dispatchEvent(event);
-  }
-
-  // Programmatically click a radio button or checkbox
-  function selectChoice(el) {
-    // 1. Click and dispatch mouse sequence on choice button itself
-    el.focus();
-    dispatchMouseEvent(el, 'mousedown');
-    dispatchMouseEvent(el, 'mouseup');
-    el.click();
-    dispatchMouseEvent(el, 'click');
-    
-    // 2. Click parent wrapper container if present (crucial for Google Forms event listeners)
-    let parent = el.parentElement;
-    if (parent && (parent.classList.contains('appsMaterialWizToggleRadiogroupElContainer') || 
-                   parent.classList.contains('docssharedWizToggleLabeledControl') ||
-                   parent.getAttribute('role') === 'presentation')) {
-      dispatchMouseEvent(parent, 'mousedown');
-      dispatchMouseEvent(parent, 'mouseup');
-      parent.click();
-      dispatchMouseEvent(parent, 'click');
-    }
-
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   // Parse a date string of various formats into YYYY-MM-DD
