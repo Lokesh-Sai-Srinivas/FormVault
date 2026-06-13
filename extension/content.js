@@ -440,19 +440,36 @@
     return el.getAttribute('aria-checked') === 'true' || el.classList.contains('is-checked');
   }
 
+  // Dispatch native MouseEvent to satisfy framework listeners (like Angular/React in Google Forms)
+  function dispatchMouseEvent(el, type) {
+    const event = new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    el.dispatchEvent(event);
+  }
+
   // Programmatically click a radio button or checkbox
   function selectChoice(el) {
+    // 1. Click and dispatch mouse sequence on choice button itself
+    el.focus();
+    dispatchMouseEvent(el, 'mousedown');
+    dispatchMouseEvent(el, 'mouseup');
     el.click();
+    dispatchMouseEvent(el, 'click');
     
-    // Google Forms uses complex custom divs. Also click the parent container to trigger bubble listeners.
+    // 2. Click parent wrapper container if present (crucial for Google Forms event listeners)
     let parent = el.parentElement;
     if (parent && (parent.classList.contains('appsMaterialWizToggleRadiogroupElContainer') || 
                    parent.classList.contains('docssharedWizToggleLabeledControl') ||
                    parent.getAttribute('role') === 'presentation')) {
+      dispatchMouseEvent(parent, 'mousedown');
+      dispatchMouseEvent(parent, 'mouseup');
       parent.click();
+      dispatchMouseEvent(parent, 'click');
     }
 
-    el.dispatchEvent(new Event('click', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }
