@@ -450,51 +450,74 @@
     return false;
   }
 
-  // Fire the correct event sequence for Google Forms' Angular event listeners.
-  // Google Forms listens for pointer/mouse events on the outermost wrapper div
-  // (the container that has role="radio" or the label div wrapping it).
+  // Fire click on Google Forms radio/checkbox options using multiple strategies.
   function triggerGoogleFormsClick(el) {
-    // Walk up to find the outermost clickable container for this choice
-    // (Google Forms wraps role="radio" in a div that has the actual listener)
-    let target = el;
+    const commonOpts = { bubbles: true, cancelable: true, view: window };
 
-    // If this IS a role=radio element, its parent container is the real listener target
-    if (el.getAttribute('role') === 'radio' || el.getAttribute('role') === 'checkbox') {
-      const parent = el.closest(
-        '.appsMaterialWizToggleRadiogroupElContainer, ' +
-        '.docssharedWizToggleLabeledControl, ' +
-        '.freebirdFormviewerViewItemsRadioChoice, ' +
-        '.freebirdFormviewerViewItemsCheckboxChoice'
-      );
-      if (parent) target = parent;
+    // --- Strategy 1: Click the <label> element (most reliable for HTML forms) ---
+    // Google Forms wraps options in <label> tags which natively toggle associated inputs
+    const labelEl = el.matches('label') ? el : el.querySelector('label');
+    if (labelEl) {
+      console.log('[FormVault]     S1: Clicking label element');
+      labelEl.dispatchEvent(new MouseEvent('mousedown', commonOpts));
+      labelEl.dispatchEvent(new MouseEvent('mouseup', commonOpts));
+      labelEl.click();
+      labelEl.dispatchEvent(new MouseEvent('click', commonOpts));
     }
 
-    // Fire the full pointer/mouse event sequence
-    const pointerOpts = { bubbles: true, cancelable: true, view: window };
-    target.dispatchEvent(new PointerEvent('pointerover', pointerOpts));
-    target.dispatchEvent(new PointerEvent('pointerenter', pointerOpts));
-    target.dispatchEvent(new MouseEvent('mouseover', pointerOpts));
-    target.dispatchEvent(new MouseEvent('mouseenter', pointerOpts));
-    target.dispatchEvent(new PointerEvent('pointermove', pointerOpts));
-    target.dispatchEvent(new MouseEvent('mousemove', pointerOpts));
-    target.dispatchEvent(new PointerEvent('pointerdown', pointerOpts));
-    target.dispatchEvent(new MouseEvent('mousedown', pointerOpts));
-    target.dispatchEvent(new PointerEvent('pointerup', pointerOpts));
-    target.dispatchEvent(new MouseEvent('mouseup', pointerOpts));
-    target.click();
-    target.dispatchEvent(new MouseEvent('click', pointerOpts));
+    // --- Strategy 2: Click the container itself ---
+    el.click();
 
-    // Also try clicking any nested role=radio/checkbox just in case
-    const inner = target.querySelector('[role="radio"], [role="checkbox"]');
-    if (inner && inner !== el) {
-      inner.dispatchEvent(new MouseEvent('mousedown', pointerOpts));
-      inner.dispatchEvent(new MouseEvent('mouseup', pointerOpts));
-      inner.click();
+    // --- Strategy 3: Fire full pointer+mouse sequence on container with real coordinates ---
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const coordOpts = { ...commonOpts, clientX: cx, clientY: cy, screenX: cx, screenY: cy };
+      el.dispatchEvent(new PointerEvent('pointerdown', coordOpts));
+      el.dispatchEvent(new MouseEvent('mousedown', coordOpts));
+      el.dispatchEvent(new PointerEvent('pointerup', coordOpts));
+      el.dispatchEvent(new MouseEvent('mouseup', coordOpts));
+      el.dispatchEvent(new MouseEvent('click', coordOpts));
+      console.log('[FormVault]     S3: Dispatched coordinated click at', cx, cy);
     }
 
-    // Dispatch change/input for framework binding
-    target.dispatchEvent(new Event('change', { bubbles: true }));
-    target.dispatchEvent(new Event('input', { bubbles: true }));
+    // --- Strategy 4: Find the [role="radio"] element and click it directly ---
+    const roleRadio = el.matches('[role="radio"],[role="checkbox"]')
+      ? el
+      : el.querySelector('[role="radio"],[role="checkbox"]');
+    if (roleRadio) {
+      roleRadio.focus();
+      roleRadio.click();
+      // Also try keyboard Space press (works for focused role=radio)
+      roleRadio.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', keyCode: 32, bubbles: true, cancelable: true }));
+      roleRadio.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', keyCode: 32, bubbles: true }));
+      console.log('[FormVault]     S4: Clicked role=radio element + Space key');
+    }
+
+    // --- Strategy 5: Find any hidden native <input type="radio"> and force-check it ---
+    const nativeInput = el.querySelector('input[type="radio"],input[type="checkbox"]');
+    if (nativeInput && !nativeInput.checked) {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked').set.call(nativeInput, true);
+      nativeInput.dispatchEvent(new Event('change', { bubbles: true }));
+      nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      console.log('[FormVault]     S5: Force-set native input checked');
+    }
+
+    // --- Strategy 6: Walk up and click the jsaction container (Google's event delegation) ---
+    let curr = el;
+    for (let i = 0; i < 6 && curr; i++) {
+      const jsaction = curr.getAttribute('jsaction');
+      if (jsaction && (jsaction.includes('click') || jsaction.includes('focus'))) {
+        curr.click();
+        console.log('[FormVault]     S6: Clicked jsaction container');
+        break;
+      }
+      curr = curr.parentElement;
+    }
+
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   // -----------------------------------------------------------------------
