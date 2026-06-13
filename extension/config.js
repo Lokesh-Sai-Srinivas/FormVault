@@ -1,6 +1,5 @@
 // FormVault Extension Firebase Config
-// Copy these values from your Firebase Web App configuration in the Firebase Console
 const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "AIzaSyBozA-6G_tp69XqB5V3-LOyYzyjyRssXho",
   projectId: "formvault-b593e"
 };
