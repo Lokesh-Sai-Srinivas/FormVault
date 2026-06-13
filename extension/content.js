@@ -234,12 +234,22 @@
     console.log(`Found ${radioAndCheckboxes.length} radio/checkbox elements.`);
 
     radioAndCheckboxes.forEach((element) => {
-      const questionLabel = getQuestionLabelForChoice(element);
+      let questionLabel = '';
+      let optionLabel = '';
+
+      // First check if there is an aria-labelledby relationship (standard for Google Forms)
+      const ariaLby = getQuestionAndOptionFromAriaLabelledby(element);
+      if (ariaLby) {
+        questionLabel = ariaLby.question;
+        optionLabel = ariaLby.option;
+      } else {
+        questionLabel = getQuestionLabelForChoice(element);
+        optionLabel = getOptionLabel(element);
+      }
+
       if (!questionLabel) return;
 
       const matchedField = findMatchingField(questionLabel, profile.fields);
-      const optionLabel = getOptionLabel(element);
-      
       console.log(`Choice: Question="${questionLabel}", Option="${optionLabel}" | Match found:`, matchedField ? matchedField.label : "None");
 
       if (matchedField) {
@@ -279,7 +289,14 @@
       }
 
       // Custom Google Forms / ARIA dropdown
-      const label = getQuestionLabelForChoice(dropdown);
+      let label = '';
+      const ariaLby = getQuestionAndOptionFromAriaLabelledby(dropdown);
+      if (ariaLby) {
+        label = ariaLby.question;
+      } else {
+        label = getQuestionLabelForChoice(dropdown);
+      }
+      
       const matchedField = findMatchingField(label, profile.fields);
       console.log(`Custom Dropdown: "${label}" | Match found:`, matchedField ? matchedField.label : "None");
       
@@ -318,10 +335,62 @@
     });
   }
 
+  // Extract question text and option name from aria-labelledby IDs
+  function getQuestionAndOptionFromAriaLabelledby(el) {
+    const labelledby = el.getAttribute('aria-labelledby');
+    if (!labelledby) return null;
+
+    const ids = labelledby.split(/\s+/);
+    let question = '';
+    let option = '';
+
+    ids.forEach((id) => {
+      const target = document.getElementById(id);
+      if (!target) return;
+
+      // Check if target element is nested inside or is part of the choice button container
+      const isOptionText = el.contains(target) || (el.parentElement && el.parentElement.contains(target));
+      
+      if (isOptionText) {
+        option = target.textContent.trim();
+      } else if (target.classList.contains('M7eMe') || target.getAttribute('role') === 'heading') {
+        question = target.textContent.trim();
+      } else {
+        // Fallback: assume it's the question title if outside choice wrapper
+        question = target.textContent.trim();
+      }
+    });
+
+    if (question || option) {
+      return { question, option };
+    }
+    return null;
+  }
+
   // Traverse up to find the question label for radio, checkbox, or dropdown elements
   function getQuestionLabelForChoice(el) {
     let parent = el.parentElement;
     for (let i = 0; i < 6 && parent; i++) {
+      // If we hit a Google Forms question card container
+      if (parent.classList.contains('geS5ne') || parent.getAttribute('role') === 'listitem') {
+        const titleEl = parent.querySelector('.M7eMe, [role="heading"]');
+        if (titleEl && titleEl.textContent) {
+          return titleEl.textContent.trim();
+        }
+        break; // Don't look past the boundaries of the question card
+      }
+
+      // Standard HTML fieldsets
+      if (parent.tagName.toLowerCase() === 'fieldset') {
+        const legend = parent.querySelector('legend');
+        if (legend && legend.textContent) return legend.textContent.trim();
+      }
+      parent = parent.parentElement;
+    }
+
+    // Fallback heuristic if not inside a standard question card container
+    parent = el.parentElement;
+    for (let i = 0; i < 4 && parent; i++) {
       const titleEl = parent.querySelector('[role="heading"], .M7eMe, legend, label:not([for])');
       if (titleEl && titleEl.textContent) {
         return titleEl.textContent.trim();
@@ -372,6 +441,15 @@
   // Programmatically click a radio button or checkbox
   function selectChoice(el) {
     el.click();
+    
+    // Google Forms uses complex custom divs. Also click the parent container to trigger bubble listeners.
+    let parent = el.parentElement;
+    if (parent && (parent.classList.contains('appsMaterialWizToggleRadiogroupElContainer') || 
+                   parent.classList.contains('docssharedWizToggleLabeledControl') ||
+                   parent.getAttribute('role') === 'presentation')) {
+      parent.click();
+    }
+
     el.dispatchEvent(new Event('click', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('input', { bubbles: true }));
