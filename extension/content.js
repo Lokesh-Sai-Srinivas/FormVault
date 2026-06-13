@@ -643,6 +643,19 @@
     return str.toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
+  // Check if a profile value matches an option label (exact or fuzzy normalized)
+  function isValueMatch(profileValue, optionLabel) {
+    if (!profileValue || !optionLabel) return false;
+    const normProfile = normalizeStr(String(profileValue));
+    const normOption = normalizeStr(String(optionLabel));
+    // Exact normalized match
+    if (normProfile === normOption) return true;
+    // One contains the other (handles minor differences like trailing spaces or punctuation)
+    if (normProfile.length >= 2 && normOption.includes(normProfile)) return true;
+    if (normOption.length >= 2 && normProfile.includes(normOption)) return true;
+    return false;
+  }
+
   // Fuzzy match function linking input label to profile field keys
   function findMatchingField(label, fields) {
     if (!fields || fields.length === 0) return null;
