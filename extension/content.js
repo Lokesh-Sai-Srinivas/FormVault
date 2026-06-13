@@ -41,7 +41,7 @@
     if (tagName === 'textarea') return true;
     if (tagName === 'input') {
       const type = el.type.toLowerCase();
-      const fillableTypes = ['text', 'email', 'tel', 'number', 'url', 'search'];
+      const fillableTypes = ['text', 'email', 'tel', 'number', 'url', 'search', 'date'];
       return fillableTypes.includes(type) && !el.readOnly && !el.disabled;
     }
     
@@ -202,9 +202,8 @@
       container = document;
     }
 
+    // A. Fill standard text inputs, textareas, contenteditables, and date fields
     const inputs = container.querySelectorAll('input, textarea, [role="textbox"]');
-    
-    // 2. Loop through all found inputs and attempt to match them with profile fields
     inputs.forEach((input) => {
       if (!isFillableInput(input)) return;
 
@@ -216,6 +215,172 @@
         fillFieldValue(input, matchedField.value);
       }
     });
+
+    // B. Fill Radio buttons and Checkboxes (standard and custom ARIA elements)
+    const radioAndCheckboxes = container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]');
+    radioAndCheckboxes.forEach((element) => {
+      const questionLabel = getQuestionLabelForChoice(element);
+      if (!questionLabel) return;
+
+      const matchedField = findMatchingField(questionLabel, profile.fields);
+      if (matchedField) {
+        const optionLabel = getOptionLabel(element);
+        if (optionLabel && isValueMatch(matchedField.value, optionLabel)) {
+          if (!isChoiceSelected(element)) {
+            selectChoice(element);
+          }
+        }
+      }
+    });
+
+    // C. Fill Dropdown Menus (standard select and custom ARIA elements)
+    const dropdowns = container.querySelectorAll('select, [role="listbox"], [role="combobox"]');
+    dropdowns.forEach((dropdown) => {
+      // Standard HTML select element
+      if (dropdown.tagName.toLowerCase() === 'select') {
+        const label = getFieldLabel(dropdown);
+        const matchedField = findMatchingField(label, profile.fields);
+        if (matchedField) {
+          const options = dropdown.options;
+          for (let i = 0; i < options.length; i++) {
+            if (isValueMatch(matchedField.value, options[i].text) || isValueMatch(matchedField.value, options[i].value)) {
+              dropdown.selectedIndex = i;
+              dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+              break;
+            }
+          }
+        }
+        return;
+      }
+
+      // Custom Google Forms / ARIA dropdown
+      const label = getQuestionLabelForChoice(dropdown);
+      const matchedField = findMatchingField(label, profile.fields);
+      if (matchedField) {
+        // Open the dropdown menu to expose options
+        dropdown.click();
+        dropdown.dispatchEvent(new Event('click', { bubbles: true }));
+
+        // Wait for options to render, click match, then close if not found
+        setTimeout(() => {
+          const options = document.querySelectorAll('[role="option"], .quantumWizMenuPaperselectOption, .appsMaterialWizMenuPaperselectOption');
+          let foundOption = null;
+          for (const option of options) {
+            const optionText = option.textContent || option.getAttribute('data-value') || '';
+            if (isValueMatch(matchedField.value, optionText)) {
+              foundOption = option;
+              break;
+            }
+          }
+
+          if (foundOption) {
+            foundOption.click();
+            foundOption.dispatchEvent(new Event('click', { bubbles: true }));
+          } else {
+            // Close the dropdown if no match was found
+            dropdown.click();
+            dropdown.dispatchEvent(new Event('click', { bubbles: true }));
+          }
+        }, 150);
+      }
+    });
+  }
+
+  // Traverse up to find the question label for radio, checkbox, or dropdown elements
+  function getQuestionLabelForChoice(el) {
+    let parent = el.parentElement;
+    for (let i = 0; i < 6 && parent; i++) {
+      const titleEl = parent.querySelector('[role="heading"], .M7eMe, legend, label:not([for])');
+      if (titleEl && titleEl.textContent) {
+        return titleEl.textContent.trim();
+      }
+      parent = parent.parentElement;
+    }
+    return '';
+  }
+
+  // Extract the label/text for a specific radio or checkbox option
+  function getOptionLabel(el) {
+    const dataVal = el.getAttribute('data-value');
+    if (dataVal) return dataVal.trim();
+
+    const ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel) return ariaLabel.trim();
+
+    if (el.id) {
+      const labelEl = document.querySelector(`label[for="${el.id}"]`);
+      if (labelEl) return labelEl.textContent.trim();
+    }
+
+    const parentLabel = el.closest('label');
+    if (parentLabel) return parentLabel.textContent.trim();
+
+    if (el.textContent && el.textContent.trim()) {
+      return el.textContent.trim();
+    }
+
+    // Check sibling text content
+    let parent = el.parentElement;
+    if (parent) {
+      const text = parent.textContent || '';
+      if (text.trim()) return text.trim();
+    }
+
+    return '';
+  }
+
+  // Check if a radio or checkbox element is currently selected
+  function isChoiceSelected(el) {
+    if (el.tagName.toLowerCase() === 'input') {
+      return el.checked;
+    }
+    return el.getAttribute('aria-checked') === 'true' || el.classList.contains('is-checked');
+  }
+
+  // Programmatically click a radio button or checkbox
+  function selectChoice(el) {
+    el.click();
+    el.dispatchEvent(new Event('click', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // Parse a date string of various formats into YYYY-MM-DD
+  function parseDateString(str) {
+    if (!str) return null;
+    str = str.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      return str;
+    }
+
+    const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmyMatch) {
+      const day = dmyMatch[1].padStart(2, '0');
+      const month = dmyMatch[2].padStart(2, '0');
+      const year = dmyMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, '0');
+      const day = ymdMatch[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {}
+
+    return null;
   }
 
   // Extract human-readable label or question text for an input
@@ -303,7 +468,8 @@
       'name': ['name', 'full name', 'first name', 'last name', 'fname', 'lname', 'fullname'],
       'phone': ['phone', 'mobile', 'telephone', 'contact', 'tel', 'number', 'whatsapp'],
       'address': ['address', 'residence', 'street', 'city', 'state', 'country', 'zip', 'pincode'],
-      'college': ['college', 'university', 'school', 'institute', 'roll number', 'roll no', 'registration no', 'enrollment']
+      'college': ['college', 'university', 'school', 'institute', 'roll number', 'roll no', 'registration no', 'enrollment'],
+      'date': ['date', 'dob', 'date of birth', 'birthdate', 'birth']
     };
 
     for (const [key, aliases] of Object.entries(mappings)) {
@@ -324,7 +490,16 @@
     input.focus();
 
     if (input.tagName.toLowerCase() === 'input' || input.tagName.toLowerCase() === 'textarea') {
-      input.value = value;
+      if (input.type === 'date') {
+        const normalizedDate = parseDateString(value);
+        if (normalizedDate) {
+          input.value = normalizedDate;
+        } else {
+          input.value = value;
+        }
+      } else {
+        input.value = value;
+      }
     } else if (input.getAttribute('contenteditable') === 'true') {
       // Contenteditable divs (often used in web editors or custom textboxes)
       input.innerText = value;
