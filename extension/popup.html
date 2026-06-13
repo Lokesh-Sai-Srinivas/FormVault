@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FormVault</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="glass-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🔑</span>
+        <span class="logo-text">Form<span class="highlight">Vault</span></span>
+      </div>
+      <div id="sync-indicator" class="sync-dot status-offline" title="Sync Status"></div>
+    </header>
+
+    <main class="content">
+      <!-- Screen 1: Login Screen -->
+      <section id="screen-login" class="screen active">
+        <h2 class="title">Welcome Back</h2>
+        <p class="subtitle">Access your form profiles securely.</p>
+        
+        <form id="login-form">
+          <div class="input-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required placeholder="name@domain.com">
+          </div>
+          <div class="input-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" required placeholder="••••••••">
+          </div>
+          <div class="input-group advanced-toggle">
+            <button type="button" id="btn-toggle-server" class="link-btn">Advanced Settings</button>
+          </div>
+          <div id="server-url-container" class="input-group hidden">
+            <label for="server-url">Sync Server URL</label>
+            <input type="url" id="server-url" value="http://localhost:5000" placeholder="http://localhost:5000">
+          </div>
+          
+          <div id="login-error" class="error-msg hidden"></div>
+          
+          <button type="submit" class="btn-primary" id="btn-login">
+            <span class="btn-text">Sign In</span>
+            <span class="spinner hidden"></span>
+          </button>
+        </form>
+        <div class="footer-links">
+          <span>Don't have an account?</span>
+          <a href="http://localhost:5173" target="_blank" id="register-link" class="link">Sign Up on Web</a>
+        </div>
+      </section>
+
+      <!-- Screen 2: Dashboard Screen -->
+      <section id="screen-dashboard" class="screen">
+        <div class="user-info">
+          <span class="user-icon">👤</span>
+          <span id="user-email" class="email-text">user@example.com</span>
+        </div>
+
+        <div class="profiles-section">
+          <div class="section-header">
+            <h3>Synced Profiles</h3>
+            <span id="profile-count" class="badge">0</span>
+          </div>
+          <div id="profiles-list" class="profiles-list">
+            <!-- Dynamic profiles will be injected here -->
+            <div class="empty-state">No profiles found. Create one in the web app.</div>
+          </div>
+        </div>
+
+        <div id="sync-time-container" class="sync-timestamp">
+          Last synced: <span id="sync-time">Never</span>
+        </div>
+
+        <div class="action-footer">
+          <button id="btn-sync" class="btn-secondary">
+            <span class="icon">🔄</span> Sync Now
+          </button>
+          <button id="btn-logout" class="btn-danger">
+            <span class="icon">🚪</span> Sign Out
+          </button>
+        </div>
+        <div class="web-link-footer">
+          <a href="http://localhost:5173" target="_blank" class="btn-link">Open Dashboard Web App</a>
+        </div>
+      </section>
+
+      <!-- Screen 3: Expired Screen -->
+      <section id="screen-expired" class="screen">
+        <div class="expired-card">
+          <div class="expired-icon">⚠️</div>
+          <h2 class="title text-warning">Session Expired</h2>
+          <p class="subtitle">For security, local storage is locked after 24 hours offline. Please connect to the internet and re-authenticate.</p>
+          
+          <button id="btn-go-login" class="btn-primary">Authenticate Now</button>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

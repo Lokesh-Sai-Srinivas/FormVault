@@ -1,0 +1,126 @@
+/* FormVault Injected Content Styles */
+
+/* Floating Autofill Button */
+.fv-fill-btn {
+  position: absolute;
+  z-index: 2147483647; /* Ensure it is on top of everything */
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  padding: 0;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.fv-fill-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.6);
+}
+
+.fv-fill-btn svg {
+  width: 12px;
+  height: 12px;
+  fill: #ffffff;
+}
+
+/* Floating Dropdown Card */
+.fv-dropdown {
+  position: absolute;
+  z-index: 2147483647;
+  width: 200px;
+  background: rgba(18, 14, 38, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  animation: fvFadeIn 0.2s ease;
+  margin-top: 4px;
+}
+
+@keyframes fvFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fv-dropdown-header {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #9ca3af;
+  letter-spacing: 0.5px;
+}
+
+.fv-dropdown-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.fv-dropdown-item {
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.fv-dropdown-item:hover {
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.fv-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.fv-profile-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.fv-profile-tag {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.fv-tag-owner {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.fv-tag-shared {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.fv-empty-msg {
+  padding: 12px 10px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  line-height: 1.4;
+}
