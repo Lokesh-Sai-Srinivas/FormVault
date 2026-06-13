@@ -359,7 +359,13 @@
       if (isQuestion) {
         question = target.textContent.trim();
       } else {
-        option = target.textContent.trim();
+        // Only classify as the option choice text if it resides inside the choice's wrapper container
+        const choiceContainer = el.closest('.appsMaterialWizToggleRadiogroupElContainer, .docssharedWizToggleLabeledControl, [role="presentation"]') || el.parentElement;
+        const isOption = choiceContainer && choiceContainer.contains(target);
+        
+        if (isOption) {
+          option = target.textContent.trim();
+        }
       }
     });
 
