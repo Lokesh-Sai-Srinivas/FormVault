@@ -189,10 +189,17 @@
 
   function autofillForm(profile) {
     // 1. Find all input/textarea elements on the page (or within current form)
-    let container = activeInput.closest('form');
-    // If no form wrapper (common in Google Forms or SPA frameworks), scan the parent element up a few steps or the whole page
+    let container = null;
+    if (activeInput) {
+      container = activeInput.closest('form');
+      // If no form wrapper (common in Google Forms or SPA frameworks), scan the parent element up a few steps
+      if (!container) {
+        container = activeInput.closest('[role="list"]') || activeInput.closest('.freebirdFormviewerViewFormContent');
+      }
+    }
+    // Fall back to document if no active input or parent container was found
     if (!container) {
-      container = activeInput.closest('[role="list"]') || activeInput.closest('.freebirdFormviewerViewFormContent') || document;
+      container = document;
     }
 
     const inputs = container.querySelectorAll('input, textarea, [role="textbox"]');
@@ -330,6 +337,19 @@
     // Blur to simulate user leaving the input, executing validations
     input.blur();
   }
+
+  // Listen for messages from popup script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'autofill') {
+      try {
+        autofillForm(message.profile);
+        sendResponse({ success: true });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    }
+    return true;
+  });
 
   function escapeHtml(str) {
     if (!str) return '';

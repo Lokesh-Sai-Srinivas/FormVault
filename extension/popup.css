@@ -316,6 +316,7 @@ form {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid transparent;
   transition: var(--transition);
+  cursor: pointer;
 }
 
 .profile-item:hover {

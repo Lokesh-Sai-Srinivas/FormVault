@@ -184,6 +184,30 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             ${tagHtml}
           `;
+
+          // Add click listener to trigger autofill on the active webpage
+          profileItem.addEventListener('click', () => {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+              const activeTab = tabs[0];
+              if (!activeTab) return;
+
+              chrome.tabs.sendMessage(activeTab.id, {
+                action: 'autofill',
+                profile: profile
+              }, (response) => {
+                if (chrome.runtime.lastError) {
+                  console.warn('Autofill message error:', chrome.runtime.lastError.message);
+                  alert('Make sure you are on a webpage (not a chrome:// page) and refresh it if you just installed the extension.');
+                } else if (response && response.success) {
+                  // Close the extension popup window after filling the form
+                  window.close();
+                } else if (response && response.error) {
+                  alert('Autofill error: ' + response.error);
+                }
+              });
+            });
+          });
+
           profilesListDiv.appendChild(profileItem);
         });
       });
