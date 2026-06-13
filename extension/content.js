@@ -239,12 +239,15 @@
 
       // First check if there is an aria-labelledby relationship (standard for Google Forms)
       const ariaLby = getQuestionAndOptionFromAriaLabelledby(element);
-      if (ariaLby) {
+      if (ariaLby && ariaLby.question && ariaLby.option) {
         questionLabel = ariaLby.question;
         optionLabel = ariaLby.option;
       } else {
-        questionLabel = getQuestionLabelForChoice(element);
-        optionLabel = getOptionLabel(element);
+        questionLabel = ariaLby ? ariaLby.question : '';
+        optionLabel = ariaLby ? ariaLby.option : '';
+        
+        if (!questionLabel) questionLabel = getQuestionLabelForChoice(element);
+        if (!optionLabel) optionLabel = getOptionLabel(element);
       }
 
       if (!questionLabel) return;
@@ -348,16 +351,15 @@
       const target = document.getElementById(id);
       if (!target) return;
 
-      // Check if target element is nested inside or is part of the choice button container
-      const isOptionText = el.contains(target) || (el.parentElement && el.parentElement.contains(target));
+      // Question title element has class M7eMe, is role="heading", or is a legend
+      const isQuestion = target.classList.contains('M7eMe') || 
+                         target.getAttribute('role') === 'heading' ||
+                         target.tagName.toLowerCase() === 'legend';
       
-      if (isOptionText) {
-        option = target.textContent.trim();
-      } else if (target.classList.contains('M7eMe') || target.getAttribute('role') === 'heading') {
+      if (isQuestion) {
         question = target.textContent.trim();
       } else {
-        // Fallback: assume it's the question title if outside choice wrapper
-        question = target.textContent.trim();
+        option = target.textContent.trim();
       }
     });
 
