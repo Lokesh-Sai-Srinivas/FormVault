@@ -20,8 +20,8 @@
     <main class="content">
       <!-- Screen 1: Login Screen -->
       <section id="screen-login" class="screen active">
-        <h2 class="title">Welcome Back</h2>
-        <p class="subtitle">Access your form profiles securely.</p>
+        <h2 class="title">Welcome</h2>
+        <p class="subtitle">Access your synced form profiles.</p>
         
         <form id="login-form">
           <div class="input-group">
@@ -32,13 +32,6 @@
             <label for="login-password">Password</label>
             <input type="password" id="login-password" required placeholder="••••••••">
           </div>
-          <div class="input-group advanced-toggle">
-            <button type="button" id="btn-toggle-server" class="link-btn">Advanced Settings</button>
-          </div>
-          <div id="server-url-container" class="input-group hidden">
-            <label for="server-url">Sync Server URL</label>
-            <input type="url" id="server-url" value="http://localhost:5000" placeholder="http://localhost:5000">
-          </div>
           
           <div id="login-error" class="error-msg hidden"></div>
           
@@ -48,8 +41,8 @@
           </button>
         </form>
         <div class="footer-links">
-          <span>Don't have an account?</span>
-          <a href="http://localhost:5173" target="_blank" id="register-link" class="link">Sign Up on Web</a>
+          <span>Need an account?</span>
+          <a href="https://lokesh-sai-srinivas.github.io/FormVault" target="_blank" id="register-link" class="link">Sign Up</a>
         </div>
       </section>
 
@@ -67,7 +60,7 @@
           </div>
           <div id="profiles-list" class="profiles-list">
             <!-- Dynamic profiles will be injected here -->
-            <div class="empty-state">No profiles found. Create one in the web app.</div>
+            <div class="empty-state">No profiles found.</div>
           </div>
         </div>
 
@@ -77,14 +70,14 @@
 
         <div class="action-footer">
           <button id="btn-sync" class="btn-secondary">
-            <span class="icon">🔄</span> Sync Now
+            <span class="icon">🔄</span> Sync
           </button>
           <button id="btn-logout" class="btn-danger">
             <span class="icon">🚪</span> Sign Out
           </button>
         </div>
         <div class="web-link-footer">
-          <a href="http://localhost:5173" target="_blank" class="btn-link">Open Dashboard Web App</a>
+          <a href="https://lokesh-sai-srinivas.github.io/FormVault" target="_blank" class="btn-link">Open Dashboard Web App</a>
         </div>
       </section>
 
@@ -93,9 +86,9 @@
         <div class="expired-card">
           <div class="expired-icon">⚠️</div>
           <h2 class="title text-warning">Session Expired</h2>
-          <p class="subtitle">For security, local storage is locked after 24 hours offline. Please connect to the internet and re-authenticate.</p>
+          <p class="subtitle">For security, cached storage is locked after 24 hours. Please re-authenticate.</p>
           
-          <button id="btn-go-login" class="btn-primary">Authenticate Now</button>
+          <button id="btn-go-login" class="btn-primary">Authenticate</button>
         </div>
       </section>
     </main>

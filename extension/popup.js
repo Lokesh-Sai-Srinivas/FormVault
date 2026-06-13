@@ -15,9 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginForm = document.getElementById('login-form');
   const loginEmailInput = document.getElementById('login-email');
   const loginPasswordInput = document.getElementById('login-password');
-  const btnToggleServer = document.getElementById('btn-toggle-server');
-  const serverUrlContainer = document.getElementById('server-url-container');
-  const serverUrlInput = document.getElementById('server-url');
   const loginErrorDiv = document.getElementById('login-error');
   const btnLogin = document.getElementById('btn-login');
   const loginSpinner = btnLogin.querySelector('.spinner');
@@ -28,45 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLogout = document.getElementById('btn-logout');
   const btnGoLogin = document.getElementById('btn-go-login');
 
-  // Load initial settings (like server URL and saved email)
-  chrome.storage.local.get(['serverUrl', 'userEmail'], (res) => {
-    if (res.serverUrl) serverUrlInput.value = res.serverUrl;
+  // Load saved email if available
+  chrome.storage.local.get(['userEmail'], (res) => {
     if (res.userEmail) loginEmailInput.value = res.userEmail;
-    
-    // Set up register link URL dynamically based on server URL
-    updateRegisterLinkUrl(res.serverUrl || 'http://localhost:5000');
   });
 
   // Check authentication status on open
   checkAuthStatus();
-
-  // Toggle Advanced Settings (Server URL)
-  btnToggleServer.addEventListener('click', () => {
-    serverUrlContainer.classList.toggle('hidden');
-    if (serverUrlContainer.classList.contains('hidden')) {
-      btnToggleServer.textContent = 'Advanced Settings';
-    } else {
-      btnToggleServer.textContent = 'Hide Advanced Settings';
-    }
-  });
-
-  // Server URL input listener to keep registration link in sync
-  serverUrlInput.addEventListener('input', (e) => {
-    const url = e.target.value.trim() || 'http://localhost:5000';
-    updateRegisterLinkUrl(url);
-  });
-
-  function updateRegisterLinkUrl(serverUrl) {
-    const registerLink = document.getElementById('register-link');
-    // If it's localhost:5000 (default server), dashboard is localhost:5173 (default vite port).
-    // Otherwise, we assume the web app dashboard is hosted on the same domain or we link to root of serverUrl
-    if (serverUrl.includes('localhost:5000')) {
-      registerLink.href = 'http://localhost:5173';
-    } else {
-      // Stripping /api if it exists and trying to point to the base domain
-      registerLink.href = serverUrl.replace(/\/api$/, '').replace(/:5000$/, ':5173');
-    }
-  }
 
   // Handle Login Submission
   loginForm.addEventListener('submit', (e) => {
@@ -74,7 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const email = loginEmailInput.value.trim();
     const password = loginPasswordInput.value;
-    const serverUrl = serverUrlInput.value.trim();
 
     // Show loading state
     loginSpinner.classList.remove('hidden');
@@ -84,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chrome.runtime.sendMessage({
       action: 'login',
-      data: { email, password, serverUrl }
+      data: { email, password }
     }, (response) => {
       // Reset loading state
       loginSpinner.classList.add('hidden');
@@ -109,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chrome.runtime.sendMessage({ action: 'sync' }, (response) => {
       btnSync.disabled = false;
-      btnSync.innerHTML = '<span class="icon">🔄</span> Sync Now';
+      btnSync.innerHTML = '<span class="icon">🔄</span> Sync';
 
       if (response && response.success) {
         renderDashboard();

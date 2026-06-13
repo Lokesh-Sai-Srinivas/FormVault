@@ -1,25 +1,21 @@
-const DEFAULT_SERVER_URL = 'http://localhost:5000';
+// Load public configuration
+importScripts('config.js');
 
-// Helper to get server URL from storage or fallback
-async function getServerUrl() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(['serverUrl'], (result) => {
-      resolve(result.serverUrl || DEFAULT_SERVER_URL);
-    });
-  });
+// Helper to check if credentials are set
+function isConfigured() {
+  return FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY" && FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID";
 }
 
-// Check if token is expired based on the 24-hour offline rule
+// Check if token is expired based on the 24-hour system time rule
 async function checkTokenExpiry() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['token', 'syncTimestamp'], (result) => {
+    chrome.storage.local.get(['token', 'syncTimestamp', 'userId', 'userEmail'], (result) => {
       if (!result.token) {
         resolve({ valid: false, reason: 'NO_TOKEN' });
         return;
       }
 
       if (!result.syncTimestamp) {
-        // No timestamp found, force re-login for safety
         clearAuthCache();
         resolve({ valid: false, reason: 'NO_TIMESTAMP' });
         return;
@@ -32,44 +28,147 @@ async function checkTokenExpiry() {
         clearAuthCache();
         resolve({ valid: false, reason: 'EXPIRED' });
       } else {
-        resolve({ valid: true, token: result.token });
+        resolve({ 
+          valid: true, 
+          token: result.token, 
+          userId: result.userId, 
+          userEmail: result.userEmail,
+          syncTimestamp: result.syncTimestamp
+        });
       }
     });
   });
 }
 
 function clearAuthCache() {
-  chrome.storage.local.remove(['token', 'syncTimestamp', 'profiles', 'userEmail']);
+  chrome.storage.local.remove(['token', 'syncTimestamp', 'profiles', 'userEmail', 'userId']);
 }
 
-// Fetch profiles from server
-async function fetchProfiles(token) {
-  const serverUrl = await getServerUrl();
-  const response = await fetch(`${serverUrl}/api/profiles`, {
-    headers: {
-      'Authorization': `Bearer ${token}`
+// Parse structured Firestore document back into clean JSON
+function parseFirestoreFields(fields) {
+  const result = {};
+  if (!fields) return result;
+  for (const [key, val] of Object.entries(fields)) {
+    result[key] = parseValue(val);
+  }
+  return result;
+}
+
+function parseValue(val) {
+  if (val.stringValue !== undefined) return val.stringValue;
+  if (val.integerValue !== undefined) return parseInt(val.integerValue, 10);
+  if (val.doubleValue !== undefined) return parseFloat(val.doubleValue);
+  if (val.booleanValue !== undefined) return val.booleanValue;
+  if (val.arrayValue !== undefined) {
+    const list = val.arrayValue.values || [];
+    return list.map(item => parseValue(item));
+  }
+  if (val.mapValue !== undefined) {
+    return parseFirestoreFields(val.mapValue.fields || {});
+  }
+  return null;
+}
+
+// Fetch profiles directly from Firestore REST API
+async function fetchProfilesFromFirestore(token, userId, userEmail) {
+  if (!isConfigured()) {
+    throw new Error('CONFIG_REQUIRED');
+  }
+
+  const projectId = FIREBASE_CONFIG.projectId;
+  const email = userEmail.toLowerCase();
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+
+  // Query 1: Profiles owned by the user
+  const queryOwned = {
+    structuredQuery: {
+      from: [{ collectionId: 'profiles' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'userId' },
+          op: 'EQUAL',
+          value: { stringValue: userId }
+        }
+      }
+    }
+  };
+
+  // Query 2: Profiles shared with this user's email
+  const queryShared = {
+    structuredQuery: {
+      from: [{ collectionId: 'profiles' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'sharedWith' },
+          op: 'ARRAY_CONTAINS',
+          value: { stringValue: email }
+        }
+      }
+    }
+  };
+
+  const executeQuery = async (queryPayload) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(queryPayload)
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('AUTH_FAILED');
+      }
+      throw new Error('FIRESTORE_ERROR');
+    }
+
+    const results = await response.json();
+    
+    // Parse results
+    // Firestore runQuery returns an array of objects containing document or empty objects
+    const parsedDocs = [];
+    results.forEach((res) => {
+      if (res.document) {
+        const docName = res.document.name;
+        const id = docName.substring(docName.lastIndexOf('/') + 1);
+        const parsedData = parseFirestoreFields(res.document.fields);
+        parsedDocs.push({
+          id,
+          ...parsedData
+        });
+      }
+    });
+
+    return parsedDocs;
+  };
+
+  // Run queries in parallel
+  const [ownedProfiles, sharedProfiles] = await Promise.all([
+    executeQuery(queryOwned),
+    executeQuery(queryShared)
+  ]);
+
+  // Merge results, removing duplicates
+  const allProfiles = [...ownedProfiles];
+  const ownedIds = new Set(ownedProfiles.map(p => p.id));
+  
+  sharedProfiles.forEach((p) => {
+    if (!ownedIds.has(p.id)) {
+      allProfiles.push(p);
     }
   });
 
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      clearAuthCache();
-      throw new Error('AUTH_FAILED');
-    }
-    throw new Error('SERVER_ERROR');
-  }
-
-  const profiles = await response.json();
-  
-  // Cache profiles and update sync timestamp
+  // Cache profiles and update timestamp
   await new Promise((resolve) => {
     chrome.storage.local.set({ 
-      profiles, 
+      profiles: allProfiles, 
       syncTimestamp: Date.now() 
     }, resolve);
   });
 
-  return profiles;
+  return allProfiles;
 }
 
 // Handle runtime messages
@@ -78,50 +177,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     checkTokenExpiry().then((authStatus) => {
       sendResponse(authStatus);
     });
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (message.action === 'login') {
-    const { email, password, serverUrl } = message.data;
-    
-    // Save server URL first if provided
-    if (serverUrl) {
-      chrome.storage.local.set({ serverUrl });
+    if (!isConfigured()) {
+      sendResponse({ success: false, error: 'Firebase keys not set. Configure config.js first.' });
+      return false;
     }
 
-    getServerUrl().then((url) => {
-      fetch(`${url}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((err) => { throw new Error(err.error || 'Login failed') });
-        }
-        return res.json();
-      })
-      .then((data) => {
-        // Save token and email
-        chrome.storage.local.set({
-          token: data.token,
-          userEmail: data.user.email,
-          syncTimestamp: Date.now()
-        }, () => {
-          // Immediately pull profiles to cache them
-          fetchProfiles(data.token)
-            .then((profiles) => {
-              sendResponse({ success: true, user: data.user, profiles });
-            })
-            .catch((err) => {
-              // Even if sync fails initially, login succeeded
-              sendResponse({ success: true, user: data.user, profiles: [], syncWarning: true });
-            });
+    const { email, password } = message.data;
+    const loginUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_CONFIG.apiKey}`;
+
+    fetch(loginUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true })
+    })
+    .then((res) => {
+      if (!res.ok) {
+        return res.json().then((err) => { 
+          throw new Error(err.error?.message || 'Login failed');
         });
-      })
-      .catch((err) => {
-        sendResponse({ success: false, error: err.message });
+      }
+      return res.json();
+    })
+    .then((data) => {
+      // Save details to local storage
+      chrome.storage.local.set({
+        token: data.idToken,
+        userId: data.localId,
+        userEmail: data.email,
+        syncTimestamp: Date.now()
+      }, () => {
+        // Fetch profiles
+        fetchProfilesFromFirestore(data.idToken, data.localId, data.email)
+          .then((profiles) => {
+            sendResponse({ success: true, user: { id: data.localId, email: data.email }, profiles });
+          })
+          .catch((err) => {
+            sendResponse({ success: true, user: { id: data.localId, email: data.email }, profiles: [], syncWarning: true });
+          });
       });
+    })
+    .catch((err) => {
+      sendResponse({ success: false, error: err.message });
     });
     return true;
   }
@@ -133,7 +233,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      fetchProfiles(authStatus.token)
+      fetchProfilesFromFirestore(authStatus.token, authStatus.userId, authStatus.userEmail)
         .then((profiles) => {
           sendResponse({ success: true, profiles });
         })
@@ -157,7 +257,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      // Try to fetch latest in background if online, otherwise return cache
       chrome.storage.local.get(['profiles'], (result) => {
         sendResponse({ 
           success: true, 
@@ -165,10 +264,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           syncTimestamp: authStatus.syncTimestamp 
         });
 
-        // Background sync
-        fetchProfiles(authStatus.token).catch((err) => {
-          console.warn('Background sync failed:', err.message);
-        });
+        // Trigger background sync silently if online
+        fetchProfilesFromFirestore(authStatus.token, authStatus.userId, authStatus.userEmail)
+          .catch((err) => console.log('Background sync failed:', err.message));
       });
     });
     return true;
